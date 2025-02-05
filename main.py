@@ -10,44 +10,41 @@
 
 # Because the ESP8266 only has one analog 
 # input data pin and I did not implement
-# a clock timer to sample from two inputs
-# the joystick can only do 'left' and 'up'
-# as 'on' and 'off' inputs. For snake this
-# is enough to send the snake left and right.
-
 import urandom
 import sys
 import utime
-
 from ucollections import OrderedDict
 from machine import Pin, I2C, PWM, sleep
-
 
 if sys.implementation.name == 'micropython':
     import ssd1306
 else:
     import adafruit_ssd1306 as ssd1306
 
-# ESP8266 Pin assignment
-#i2c = I2C(-1, scl=Pin(5), sda=Pin(4))
+# Configuración OLED
 i2c = I2C(scl=Pin(5), sda=Pin(4))  # D1 (GPIO5) = SCL, D2 (GPIO4) = SDA
-
-# Configuración de los botones con PULL_UP
-joy1 = Pin(14, Pin.IN, Pin.PULL_UP)  # D5 (GPIO14)
-joy2 = Pin(12, Pin.IN, Pin.PULL_UP)  # D6 (GPIO12)
-joy3 = Pin(13, Pin.IN, Pin.PULL_UP)  # D7 (GPIO13)
-
+#oled = ssd1306.SSD1306_I2C(128, 64, i2c)
 oled_width = 128
 oled_height = 64
 oled = ssd1306.SSD1306_I2C(oled_width, oled_height, i2c)
-
+# Configuración de botones
+joy_click = Pin(14, Pin.IN, Pin.PULL_UP)  # D5 (GPIO14)
+joy_right = Pin(12, Pin.IN, Pin.PULL_UP)  # D6 (GPIO12)
+joy_left = Pin(13, Pin.IN, Pin.PULL_UP)   # D7 (GPIO13)
 mice = dict()
 mousecount = 0
 score = 0
 mouse_amount = 4
 
+SCORE_FILE = "scores.txt"
 
-# https://forum.micropython.org/viewtopic.php?t=6158
+def read_joystick():
+    return {
+        'joy_click': not joy_click.value(),
+        'joy_left': not joy_left.value(),
+        'joy_right': not joy_right.value()
+    }
+
 def randint(min, max):
     span = max - min + 1
     div = 0x3fffffff // span
@@ -55,15 +52,21 @@ def randint(min, max):
     val = min + offset
     return val
 
+# Funciones para manejar puntajes
+def save_score(name, score):
+    scores = load_scores()
+    scores.append((name, score))
+    scores = sorted(scores, key=lambda x: int(x[1]), reverse=True)[:5]
+    with open(SCORE_FILE, "w") as f:
+        for entry in scores:
+            f.write(f"{entry[0]}:{entry[1]}\n")
 
-def read_joystick():
-    data = {
-        'joy_click': not joy1.value(),
-        'joy_left': joy3.value(),
-        'joy_up': not joy2.value()
-    }
-    return data
-
+def load_scores():
+    try:
+        with open(SCORE_FILE, "r") as f:
+            return [line.strip().split(":") for line in f.readlines()]
+    except:
+        return []
 
 def beep(beeplen):
     beeper = PWM(Pin(14), freq=440, duty=512)
@@ -76,17 +79,61 @@ def draw(y, x):
     oled.show()
 
 
-def game_over():
-    global score
-    beep(1000)
+def show_scores():
     oled.fill(0)
-    oled.text('Game Over', 0, 20)
-    oled.text('Jugar(R)', 0, 30)
-    oled.text('Exit(L)', 0, 30)
+    oled.text("Top 5 Scores", 20, 5)
+    scores = load_scores()
+    for i, (name, score) in enumerate(scores):
+        oled.text(f"{i+1}. {name} {score}", 10, 15 + (i * 10))
     oled.show()
-    score = 0
+    utime.sleep(1)
 
+# Función para capturar iniciales
+def enter_initials(score):
+    initials = ["A", "A", "A"]
+    index = 0
+    char_list = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
+    while index < 3:
+        oled.fill(0)
+        oled.text("Ingresa Iniciales:", 10, 10)
+        oled.text(f"{initials[0]} {initials[1]} {initials[2]}", 50, 30)
+        oled.text("^" if index == 0 else " ", 50, 40)
+        oled.text("^" if index == 1 else " ", 60, 40)
+        oled.text("^" if index == 2 else " ", 70, 40)
+        oled.show()
+
+        data = read_joystick()
+
+        if data['joy_right']:
+            initials[index] = char_list[(char_list.index(initials[index]) + 1) % len(char_list)]
+        elif data['joy_left']:
+            initials[index] = char_list[(char_list.index(initials[index]) - 1) % len(char_list)]
+        elif data['joy_click']:
+            index += 1
+
+        utime.sleep(0.2)
+
+    name = "".join(initials)
+    save_score(name, score)
+    oled.fill(0)
+    oled.text(f"Guardado!", 30, 30)
+    oled.show()
+    utime.sleep(1)
+
+# Función de Game Over
+def game_over(score):
+    oled.fill(0)
+    oled.text("Game Over!", 20, 10)
+    oled.text(f"Score: {score}", 30, 30)
+    oled.text("Jugar(R)  Salir(L)", 10, 50)
+    oled.show()
+
+    scores = load_scores()
+    if len(scores) < 5 or score > int(scores[-1][1]):
+        enter_initials(score)
+
+    
 
 def update_score(score):
     for x in range(30):
@@ -128,7 +175,7 @@ def generate_mice(amount=3):
         y_rand = randint(size, oled_height - size)
         draw_mouse(x_rand, y_rand, offset + mousenr, size=size)
 
-
+# Juego como tal
 def start_game():
     global mice
     global mousecount
@@ -175,7 +222,7 @@ def start_game():
 
         draw(y, x)
         data = read_joystick()
-        if data['joy_up'] and not prevdata['joy_up']:
+        if data['joy_right'] and not prevdata['joy_right']:
             direction += 1
         if data['joy_left'] and not prevdata['joy_left']:
             direction -= 1
@@ -204,13 +251,20 @@ def start_game():
         prevdata = data
         prevscore = score
 
-def snake()
-    while True:
+
+while True:
+    # Menú Principal
+    oled.fill(0)
+    oled.text('^', 20, 0)
+    oled.text('^', 80, 0)
+    oled.text('Bienvenido', 10, 20)
+    oled.text('Jugar', 0, 10)
+    oled.text('Score', 80, 10)
+    oled.show()
+
+    data = read_joystick()
+    if data['joy_right']:
         start_game()
         game_over()
-        while True:
-            data = read_joystick()
-            if data['joy_up'] and not prevdata['joy_up']:
-                snake()
-            if data['joy_left'] and not prevdata['joy_left']:
-                break
+    if data['joy_left']:
+        show_scores()
