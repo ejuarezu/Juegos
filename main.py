@@ -266,6 +266,6 @@ while True:
     data = read_joystick()
     if data['joy_right']:
         start_game()
-        game_over()
+        game_over(score)
     if data['joy_left']:
         show_scores()
