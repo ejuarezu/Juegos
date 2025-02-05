@@ -52,6 +52,12 @@ def randint(min, max):
     val = min + offset
     return val
 
+def load_scores():
+    try:
+        with open(SCORE_FILE, "r") as f:
+            return [line.strip().split(":") for line in f.readlines()]
+    except:
+        return []
 # Funciones para manejar puntajes
 def save_score(name, score):
     scores = load_scores()
@@ -61,12 +67,7 @@ def save_score(name, score):
         for entry in scores:
             f.write(f"{entry[0]}:{entry[1]}\n")
 
-def load_scores():
-    try:
-        with open(SCORE_FILE, "r") as f:
-            return [line.strip().split(":") for line in f.readlines()]
-    except:
-        return []
+
 
 def beep(beeplen):
     beeper = PWM(Pin(14), freq=440, duty=512)
