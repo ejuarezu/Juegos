@@ -127,9 +127,9 @@ def game_over(score):
     oled.fill(0)
     oled.text("Game Over!", 20, 10)
     oled.text(f"Score: {score}", 30, 30)
-    oled.text("Jugar(R)  Salir(L)", 10, 50)
+    #oled.text("Jugar(R)  Salir(L)", 10, 50)
     oled.show()
-
+    utime.sleep(1)
     scores = load_scores()
     if len(scores) < 5 or score > int(scores[-1][1]):
         enter_initials(score)
@@ -261,6 +261,7 @@ while True:
     oled.text('Bienvenido', 10, 20)
     oled.text('Jugar', 0, 10)
     oled.text('Score', 80, 10)
+    oled.text("It's Britney Bitch", 0, 30)
     oled.show()
 
     data = read_joystick()
